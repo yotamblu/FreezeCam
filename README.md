@@ -106,6 +106,3 @@ scripts\unregister-camera.bat
 scripts\enable-frameserver.bat
 ```
 
-## License
-
-MIT
