@@ -142,6 +142,238 @@
   const personCanvas = document.createElement('canvas');
   const personCtx = personCanvas.getContext('2d', { willReadFrequently: true });
 
+  // ─── Blink System ───
+  let faceMeshInstance = null;
+  let blinkData = null;
+
+  const BLINK_STATE = { IDLE: 0, BLINKING: 1 };
+  let blinkState = BLINK_STATE.IDLE;
+  let blinkStartTime = 0;
+  let blinkDuration = 200;
+  let nextBlinkTime = 0;
+  let blinkProgress = 0;
+
+  const BLINK_CURVE = [0.0, 0.25, 0.65, 1.0, 1.0, 0.65, 0.25, 0.0];
+
+  function interpolateCurve(curve, t) {
+    const n = curve.length - 1;
+    const idx = t * n;
+    const lo = Math.floor(idx);
+    const hi = Math.min(lo + 1, n);
+    const frac = idx - lo;
+    return curve[lo] * (1 - frac) + curve[hi] * frac;
+  }
+
+  async function initFaceMesh() {
+    if (faceMeshInstance) return;
+    log('Initializing Face Mesh for blink detection...');
+    try {
+      faceMeshInstance = new FaceMesh({
+        locateFile: (file) => {
+          const url = `../../node_modules/@mediapipe/face_mesh/${file}`;
+          log('FaceMesh locateFile:', file, '->', url);
+          return url;
+        }
+      });
+      faceMeshInstance.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+      log('Face Mesh initialized');
+    } catch (e) {
+      logErr('Face Mesh init failed:', e.message);
+      faceMeshInstance = null;
+    }
+  }
+
+  function buildOrderedContour(connections) {
+    const adj = new Map();
+    for (const [a, b] of connections) {
+      if (!adj.has(a)) adj.set(a, []);
+      if (!adj.has(b)) adj.set(b, []);
+      adj.get(a).push(b);
+      adj.get(b).push(a);
+    }
+    const start = connections[0][0];
+    const ordered = [start];
+    const visited = new Set([start]);
+    let current = start;
+    for (let i = 0; i < adj.size; i++) {
+      const neighbors = adj.get(current);
+      if (!neighbors) break;
+      const next = neighbors.find(n => !visited.has(n));
+      if (next === undefined) break;
+      ordered.push(next);
+      visited.add(next);
+      current = next;
+    }
+    return ordered;
+  }
+
+  function splitEyeContour(orderedIndices, landmarks) {
+    const pts = orderedIndices.map(i => ({ x: landmarks[i].x, y: landmarks[i].y }));
+
+    let leftIdx = 0, rightIdx = 0;
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i].x < pts[leftIdx].x) leftIdx = i;
+      if (pts[i].x > pts[rightIdx].x) rightIdx = i;
+    }
+
+    const n = pts.length;
+    const path1 = [], path2 = [];
+    for (let i = leftIdx; ; i = (i + 1) % n) {
+      path1.push(pts[i]);
+      if (i === rightIdx) break;
+    }
+    for (let i = leftIdx; ; i = (i - 1 + n) % n) {
+      path2.push(pts[i]);
+      if (i === rightIdx) break;
+    }
+
+    const avg1 = path1.reduce((s, p) => s + p.y, 0) / path1.length;
+    const avg2 = path2.reduce((s, p) => s + p.y, 0) / path2.length;
+
+    const upper = (avg1 < avg2 ? path1 : path2).slice();
+    const lower = (avg1 < avg2 ? path2 : path1).slice();
+
+    upper.sort((a, b) => a.x - b.x);
+    lower.sort((a, b) => a.x - b.x);
+
+    return { upper, lower };
+  }
+
+  function computeEyeOpenHeight(upper, lower, h) {
+    const midU = upper[Math.floor(upper.length / 2)];
+    const midL = lower[Math.floor(lower.length / 2)];
+    return (midL.y - midU.y) * h;
+  }
+
+  async function captureBlinkLandmarks(sourceCanvas) {
+    if (!faceMeshInstance) await initFaceMesh();
+    if (!faceMeshInstance) return null;
+
+    return new Promise((resolve) => {
+      let resolved = false;
+
+      faceMeshInstance.onResults((results) => {
+        if (resolved) return;
+        resolved = true;
+
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+          log('FaceMesh: no face detected in frozen frame');
+          resolve(null);
+          return;
+        }
+
+        const landmarks = results.multiFaceLandmarks[0];
+        const w = sourceCanvas.width;
+        const h = sourceCanvas.height;
+
+        const leftContour = buildOrderedContour(FACEMESH_LEFT_EYE);
+        const rightContour = buildOrderedContour(FACEMESH_RIGHT_EYE);
+
+        const leftSplit = splitEyeContour(leftContour, landmarks);
+        const rightSplit = splitEyeContour(rightContour, landmarks);
+
+        const leftOpenH = computeEyeOpenHeight(leftSplit.upper, leftSplit.lower, h);
+        const rightOpenH = computeEyeOpenHeight(rightSplit.upper, rightSplit.lower, h);
+
+        log(`Blink landmarks captured: L openH=${leftOpenH.toFixed(1)}px, R openH=${rightOpenH.toFixed(1)}px`);
+        log(`L upper pts=${leftSplit.upper.length}, L lower pts=${leftSplit.lower.length}`);
+
+        resolve({
+          leftEye: { upper: leftSplit.upper, lower: leftSplit.lower, openH: leftOpenH, contour: leftContour },
+          rightEye: { upper: rightSplit.upper, lower: rightSplit.lower, openH: rightOpenH, contour: rightContour },
+          landmarks,
+          canvasW: w,
+          canvasH: h,
+        });
+      });
+
+      setTimeout(() => {
+        if (!resolved) { resolved = true; log('FaceMesh timed out'); resolve(null); }
+      }, 5000);
+
+      faceMeshInstance.send({ image: sourceCanvas }).catch((e) => {
+        logErr('FaceMesh send failed:', e.message);
+        if (!resolved) { resolved = true; resolve(null); }
+      });
+    });
+  }
+
+  function updateBlink(timestamp) {
+    if (!blinkData) return;
+
+    if (blinkState === BLINK_STATE.IDLE) {
+      if (nextBlinkTime === 0) {
+        nextBlinkTime = timestamp + 3000 + Math.random() * 3000;
+      }
+      if (timestamp >= nextBlinkTime) {
+        blinkState = BLINK_STATE.BLINKING;
+        blinkStartTime = timestamp;
+        blinkDuration = 250 + Math.random() * 150;
+        if (Math.random() < 0.12) blinkDuration = 200 + Math.random() * 80;
+      }
+    }
+
+    if (blinkState === BLINK_STATE.BLINKING) {
+      const elapsed = timestamp - blinkStartTime;
+      const t = Math.min(elapsed / blinkDuration, 1.0);
+      blinkProgress = interpolateCurve(BLINK_CURVE, t);
+
+      if (t >= 1.0) {
+        blinkProgress = 0;
+        blinkState = BLINK_STATE.IDLE;
+        const doubleBlink = Math.random() < 0.12;
+        nextBlinkTime = timestamp + (doubleBlink ? 300 + Math.random() * 200 : 4000 + Math.random() * 5000);
+      }
+    }
+  }
+
+  function applyBlinkToFrame(ctx, w, h, sourceCanvas) {
+    if (!blinkData || blinkProgress <= 0.01) return;
+    applyBlinkToEye(ctx, w, h, sourceCanvas, blinkData.leftEye, blinkProgress);
+    applyBlinkToEye(ctx, w, h, sourceCanvas, blinkData.rightEye, blinkProgress * (0.96 + Math.random() * 0.04));
+  }
+
+  function applyBlinkToEye(ctx, w, h, sourceCanvas, eye, blink) {
+    const { upper, lower, openH } = eye;
+    if (upper.length < 3 || lower.length < 3) return;
+
+    const shiftPx = blink * openH * 0.88;
+
+    ctx.save();
+
+    ctx.beginPath();
+    upper.forEach((p, i) => {
+      const px = p.x * w, py = p.y * h;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    lower.slice().reverse().forEach(p => {
+      ctx.lineTo(p.x * w, p.y * h);
+    });
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.drawImage(sourceCanvas, 0, 0, w, h, 0, shiftPx, w, h);
+
+    if (blink > 0.3) {
+      const shadowAlpha = Math.min((blink - 0.3) * 0.3, 0.18);
+      ctx.strokeStyle = `rgba(30, 20, 10, ${shadowAlpha})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      upper.forEach((p, i) => {
+        const px = p.x * w, py = p.y * h + shiftPx;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
   // ─── Init ───
   async function init() {
     log('=== FreezeCam Pro Renderer Init ===');
@@ -403,6 +635,13 @@
     } else {
       ctx.putImageData(frozenPersonData.fullFrame, 0, 0);
     }
+
+    const timestamp = performance.now();
+    updateBlink(timestamp);
+    if (blinkData && blinkProgress > 0.01) {
+      const source = frozenPersonData.rawFaceCanvas || frozenPersonData.personCanvas;
+      applyBlinkToFrame(ctx, w, h, source);
+    }
   }
 
   // ─── Freeze Logic ───
@@ -417,6 +656,10 @@
 
     if (!frozen) {
       frozenPersonData = null;
+      blinkData = null;
+      blinkState = BLINK_STATE.IDLE;
+      blinkProgress = 0;
+      nextBlinkTime = 0;
     }
 
     freezeBadge.classList.toggle('visible', frozen);
@@ -426,7 +669,7 @@
     setStatus(frozen ? t('cameraFrozen') : t('cameraActive'), 'active');
   }
 
-  function captureFreeze() {
+  async function captureFreeze() {
     const w = outputCanvas.width;
     const h = outputCanvas.height;
     log('Capturing freeze frame:', w, 'x', h, 'hasMask:', !!latestSegMask);
@@ -437,6 +680,12 @@
     frozenPerson.width = w;
     frozenPerson.height = h;
     const fpCtx = frozenPerson.getContext('2d');
+
+    const rawFaceCanvas = document.createElement('canvas');
+    rawFaceCanvas.width = w;
+    rawFaceCanvas.height = h;
+    const rawFaceCtx = rawFaceCanvas.getContext('2d');
+    rawFaceCtx.drawImage(webcamVideo, 0, 0, w, h);
 
     if (latestSegMask) {
       fpCtx.drawImage(webcamVideo, 0, 0, w, h);
@@ -458,7 +707,20 @@
     frozenPersonData = {
       fullFrame: fullFrame,
       personCanvas: frozenPerson,
+      rawFaceCanvas: rawFaceCanvas,
     };
+
+    blinkData = null;
+    blinkState = BLINK_STATE.IDLE;
+    blinkProgress = 0;
+    nextBlinkTime = 0;
+
+    captureBlinkLandmarks(rawFaceCanvas).then((data) => {
+      if (data && isFrozen) {
+        blinkData = data;
+        log('Blink landmarks ready, blinking enabled');
+      }
+    });
   }
 
   // ─── Virtual Camera Output ───

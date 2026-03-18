@@ -20,6 +20,7 @@
     "electron-builder": "^26.8.1"
   },
   "dependencies": {
+    "@mediapipe/face_mesh": "^0.4.1633559619",
     "@mediapipe/selfie_segmentation": "^0.1.1675465747",
     "node-addon-api": "^8.0.0",
     "node-gyp": "^10.0.0"
@@ -35,7 +36,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "logo.png"
@@ -50,7 +53,8 @@
     "files": [
       "src/**/*",
       "logo.png",
-      "node_modules/@mediapipe/selfie_segmentation/**/*"
+      "node_modules/@mediapipe/selfie_segmentation/**/*",
+      "node_modules/@mediapipe/face_mesh/**/*"
     ],
     "extraResources": [
       {
