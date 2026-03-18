@@ -1,0 +1,7 @@
+#pragma once
+
+#include <initguid.h>
+
+// {8E14549A-DB61-4309-AFA1-3578E927E935}
+DEFINE_GUID(CLSID_FreezeCamVirtualCamera,
+    0x8e14549a, 0xdb61, 0x4309, 0xaf, 0xa1, 0x35, 0x78, 0xe9, 0x27, 0xe9, 0x35);

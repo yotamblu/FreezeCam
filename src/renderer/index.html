@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' blob: https:; media-src 'self' blob: file: mediastream:; img-src 'self' blob: data: file:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+  <title>FreezeCam Pro</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Custom titlebar -->
+    <div class="titlebar" id="titlebar">
+      <div class="titlebar-left">
+        <img src="../../logo.png" alt="logo" class="titlebar-logo">
+        <span class="titlebar-title">FreezeCam Pro</span>
+      </div>
+      <div class="titlebar-controls">
+        <button class="tb-btn tb-lang" id="btn-lang" title="English / עברית">
+          <span id="lang-label">EN</span>
+        </button>
+        <button class="tb-btn tb-minimize" id="btn-minimize">
+          <svg width="12" height="12" viewBox="0 0 12 12"><rect y="5" width="12" height="2" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button class="tb-btn tb-maximize" id="btn-maximize">
+          <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        </button>
+        <button class="tb-btn tb-close" id="btn-close">
+          <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2L10 10M10 2L2 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="content">
+      <!-- Preview -->
+      <div class="glass-panel preview-panel">
+        <div class="preview-container" id="preview-container">
+          <video id="webcam-video" autoplay playsinline muted></video>
+          <video id="bg-video" loop muted style="display:none;"></video>
+          <canvas id="output-canvas"></canvas>
+          <div class="preview-overlay" id="preview-overlay">
+            <div class="preview-placeholder">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              <span data-i18n="selectCamera">בחר מצלמה כדי להתחיל</span>
+            </div>
+          </div>
+          <div class="freeze-badge" id="freeze-badge" data-i18n="frozen">מוקפא</div>
+        </div>
+      </div>
+
+      <!-- Controls row 1: Camera + Background -->
+      <div class="controls-row">
+        <div class="glass-panel control-panel">
+          <label class="control-label" data-i18n="camera">מצלמה</label>
+          <select id="camera-select" class="glass-select">
+            <option value="" data-i18n="selectCameraDropdown">בחר מצלמה...</option>
+          </select>
+        </div>
+        <div class="glass-panel control-panel">
+          <label class="control-label" data-i18n="bgVideo">סרטון רקע</label>
+          <div class="bg-video-row">
+            <button class="glass-btn glass-btn-secondary bg-video-choose" id="btn-bg-video">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              <span id="bg-video-label" data-i18n="chooseFile">בחר קובץ</span>
+            </button>
+            <button class="glass-btn glass-btn-remove" id="btn-bg-remove" style="display:none;" title="Remove background">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls row 2: Hotkey + Freeze -->
+      <div class="controls-row">
+        <div class="glass-panel control-panel">
+          <label class="control-label" data-i18n="hotkey">קיצור מקשים</label>
+          <button class="glass-btn glass-btn-hotkey" id="btn-hotkey">
+            <span id="hotkey-label">Ctrl+Shift+F</span>
+          </button>
+          <span class="control-hint" id="hotkey-hint" data-i18n="clickToChange">לחץ לשינוי</span>
+        </div>
+        <div class="glass-panel control-panel freeze-panel">
+          <label class="control-label" data-i18n="freeze">הקפאה</label>
+          <button class="freeze-toggle" id="btn-freeze">
+            <div class="freeze-toggle-track">
+              <div class="freeze-toggle-thumb"></div>
+            </div>
+            <span class="freeze-label" id="freeze-label" data-i18n="off">כבוי</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- How to use button -->
+      <button class="glass-btn glass-btn-info" id="btn-info">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span data-i18n="infoTitle">איך להשתמש</span>
+      </button>
+
+      <!-- Status bar -->
+      <div class="glass-panel status-bar">
+        <div class="status-dot" id="status-dot"></div>
+        <span class="status-text" id="status-text" data-i18n="initializing">מאתחל...</span>
+      </div>
+
+      <!-- Info overlay -->
+      <div class="info-overlay" id="info-overlay">
+        <div class="glass-panel info-panel">
+          <div class="info-header">
+            <span class="info-title" data-i18n="infoTitle">איך להשתמש</span>
+            <button class="info-close-btn" id="btn-info-close">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="info-body" id="info-body"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../../node_modules/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

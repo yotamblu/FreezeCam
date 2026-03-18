@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Native build artifacts
+native/addon/build/
+native/virtual-camera/build/
+native/virtual-camera/build2/
+
+# Installer output
+installer-output/
+
+# Electron-builder cache
+.electron-builder-cache/
+
+# Build / compilation artifacts
+*.obj
+*.lib
+*.exp
+*.dll
+*.node
+*.pdb
+*.ilk
+*.iobj
+*.ipdb
+*.tlog
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Misc
+*.ico

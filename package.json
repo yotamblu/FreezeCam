@@ -1,0 +1,67 @@
+{
+  "name": "freezecam-pro",
+  "version": "1.0.0",
+  "description": "FreezeCam Pro - Virtual Camera Freeze Tool",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "rebuild": "electron-rebuild",
+    "build:camera": "cd native/virtual-camera && cmake -B build -G \"Visual Studio 17 2022\" -A x64 && cmake --build build --config Release",
+    "register:camera": "powershell -Command \"Start-Process regsvr32 -ArgumentList '/s native/virtual-camera/build/Release/FreezeCamVirtualCamera.dll' -Verb RunAs\"",
+    "unregister:camera": "powershell -Command \"Start-Process regsvr32 -ArgumentList '/u /s native/virtual-camera/build/Release/FreezeCamVirtualCamera.dll' -Verb RunAs\"",
+    "postinstall": "npx @electron/rebuild",
+    "dist": "electron-builder --win --x64"
+  },
+  "author": "FreezeCam Pro",
+  "license": "MIT",
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "@mediapipe/selfie_segmentation": "^0.1.1675465747",
+    "node-addon-api": "^8.0.0",
+    "node-gyp": "^10.0.0"
+  },
+  "build": {
+    "appId": "com.freezecam.pro",
+    "productName": "FreezeCam Pro",
+    "copyright": "Copyright © 2026 FreezeCam Pro",
+    "directories": {
+      "output": "installer-output"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "logo.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": true,
+      "allowElevation": true,
+      "include": "installer/nsis-hooks.nsh"
+    },
+    "files": [
+      "src/**/*",
+      "logo.png",
+      "node_modules/@mediapipe/selfie_segmentation/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "native/addon/build/Release/freezecam_addon.node",
+        "to": "native/freezecam_addon.node"
+      },
+      {
+        "from": "native/virtual-camera/build2/FreezeCamVirtualCamera.dll",
+        "to": "native/FreezeCamVirtualCamera.dll"
+      }
+    ],
+    "asar": false
+  }
+}
